@@ -129,6 +129,7 @@ jobs:
           ANDROID_APP: ${{ github.workspace }}/apps/NativeDemoApp.apk
           ANDROID_DEVICE: Pixel_6
           ANDROID_VERSION: "35"
+          ANDROID_PROFILE: pixel_6
         with:
           api-level: ${{ env.ANDROID_API_LEVEL }}
           target: ${{ env.ANDROID_TARGET }}

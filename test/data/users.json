@@ -1,0 +1,19 @@
+{
+  "valid": {
+    "email": "test@webdriver.io",
+    "password": "test1234"
+  },
+  "invalidEmail": {
+    "email": "invalid@example.com",
+    "password": "test1234"
+  },
+  "invalidPassword": {
+    "email": "test@webdriver.io",
+    "password": "wrong-password"
+  },
+  "signup": {
+    "email": "automation@example.com",
+    "password": "Password123!",
+    "confirmPassword": "Password123!"
+  }
+}

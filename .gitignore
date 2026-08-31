@@ -1,0 +1,12 @@
+node_modules/
+allure-results/
+allure-report/
+screenshots/
+.DS_Store
+.vscode/
+.idea/
+*.log
+apps/*.apk
+apps/*.app
+apps/*.zip
+

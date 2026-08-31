@@ -1,0 +1,351 @@
+name: Mobile Automation
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to execute"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - both
+          - android
+          - ios
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  DEMO_APP_VERSION: "2.2.0"
+  DEMO_APP_REPO: webdriverio/native-demo-app
+  ANDROID_API_LEVEL: "35"
+  ANDROID_TARGET: google_apis
+  ANDROID_ARCH: x86_64
+  ANDROID_PROFILE: Pixel_6
+
+jobs:
+  android:
+    name: Android - Appium
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'both' || inputs.platform == 'android'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Appium drivers
+        uses: actions/cache@v4
+        with:
+          path: ~/.appium
+          key: appium-android-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            appium-android-${{ runner.os }}-
+
+      # ------------------------------------------------------------------
+      # Demo app: baixado apenas na primeira execucao de cada versao.
+      # A chave do cache inclui DEMO_APP_VERSION, entao trocar a versao
+      # no bloco env invalida o cache e dispara um novo download.
+      # ------------------------------------------------------------------
+      - name: Cache demo app binary
+        id: demo-app-cache
+        uses: actions/cache@v4
+        with:
+          path: apps
+          key: demo-app-android-${{ env.DEMO_APP_VERSION }}
+
+      - name: Download demo app (Android)
+        if: steps.demo-app-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p apps
+          URL="https://github.com/${DEMO_APP_REPO}/releases/download/v${DEMO_APP_VERSION}/android.wdio.native.app.v${DEMO_APP_VERSION}.apk"
+          echo "Baixando: ${URL}"
+          curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
+            -o apps/NativeDemoApp.apk "${URL}"
+
+      - name: Validate demo app (Android)
+        run: |
+          set -euo pipefail
+          test -s apps/NativeDemoApp.apk
+          unzip -l apps/NativeDemoApp.apk | grep -q AndroidManifest.xml
+          ls -lh apps/NativeDemoApp.apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Cache AVD and emulator snapshot
+        id: avd-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb_keys
+          key: avd-${{ env.ANDROID_API_LEVEL }}-${{ env.ANDROID_TARGET }}-${{ env.ANDROID_ARCH }}-${{ env.ANDROID_PROFILE }}
+
+      - name: Create AVD and generate snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+          profile: ${{ env.ANDROID_PROFILE }}
+          cores: 2
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 8192M
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-load
+          disable-animations: false
+          script: echo "AVD snapshot generated"
+
+      - name: Run Android tests
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          PLATFORM: android
+          ANDROID_APP: ${{ github.workspace }}/apps/NativeDemoApp.apk
+          ANDROID_DEVICE: Pixel_6
+          ANDROID_VERSION: "35"
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+          profile: ${{ env.ANDROID_PROFILE }}
+          cores: 2
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 8192M
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot-save
+          disable-animations: true
+          script: npm run test:android
+
+      - name: Generate Allure report
+        if: always()
+        run: npm run allure:generate
+
+      - name: Upload Allure report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report-android
+          path: allure-report/
+          retention-days: 14
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-android
+          path: screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload raw Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-android
+          path: allure-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  ios:
+    name: iOS - Appium XCUITest
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'both' || inputs.platform == 'ios'
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve Xcode version
+        id: xcode
+        run: echo "version=$(xcodebuild -version | head -n 1 | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Appium drivers
+        id: appium-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.appium
+          key: appium-ios-${{ runner.os }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            appium-ios-${{ runner.os }}-${{ steps.xcode.outputs.version }}-
+
+      - name: Install Appium XCUITest driver
+        if: steps.appium-cache.outputs.cache-hit != 'true'
+        run: npx appium driver install xcuitest
+
+      - name: Cache WebDriverAgent build
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/wda-derived-data
+          key: wda-${{ runner.os }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            wda-${{ runner.os }}-${{ steps.xcode.outputs.version }}-
+
+      - name: Show Xcode and simulator information
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+          xcrun simctl list devices available
+
+      # ------------------------------------------------------------------
+      # Demo app iOS: o release publica um .zip contendo o bundle .app.
+      # Cacheamos a pasta apps/ ja descompactada, entao o unzip tambem
+      # so acontece na primeira execucao de cada versao.
+      # ------------------------------------------------------------------
+      - name: Cache demo app binary
+        id: demo-app-cache
+        uses: actions/cache@v4
+        with:
+          path: apps
+          key: demo-app-ios-${{ env.DEMO_APP_VERSION }}
+
+      - name: Download demo app (iOS)
+        if: steps.demo-app-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p apps
+          URL="https://github.com/${DEMO_APP_REPO}/releases/download/v${DEMO_APP_VERSION}/ios.simulator.wdio.native.app.v${DEMO_APP_VERSION}.zip"
+          echo "Baixando: ${URL}"
+          curl -fSL --retry 3 --retry-delay 5 --retry-all-errors \
+            -o /tmp/ios-demo-app.zip "${URL}"
+          unzip -q /tmp/ios-demo-app.zip -d apps/
+          rm -f /tmp/ios-demo-app.zip
+
+          # O nome do bundle dentro do zip varia entre releases, entao
+          # localizamos o .app e normalizamos para o caminho esperado.
+          APP_DIR="$(find apps -maxdepth 2 -name '*.app' -type d -print -quit)"
+          if [ -z "${APP_DIR}" ]; then
+            echo "Nenhum bundle .app encontrado no zip:"
+            find apps -maxdepth 2
+            exit 1
+          fi
+          if [ "${APP_DIR}" != "apps/NativeDemoApp.app" ]; then
+            rm -rf apps/NativeDemoApp.app
+            mv "${APP_DIR}" apps/NativeDemoApp.app
+          fi
+
+      - name: Validate demo app (iOS)
+        run: |
+          set -euo pipefail
+          test -d apps/NativeDemoApp.app
+          test -f apps/NativeDemoApp.app/Info.plist
+          du -sh apps/NativeDemoApp.app
+
+      - name: Boot iOS Simulator
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available | grep -m 1 'iPhone 15 (' | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')"
+          if [ -z "$DEVICE_ID" ]; then
+            echo "iPhone 15 simulator not found."
+            exit 1
+          fi
+          echo "IOS_UDID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE_ID" || true
+          open -a Simulator
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+
+      - name: Run iOS tests
+        env:
+          PLATFORM: ios
+          IOS_APP: ${{ github.workspace }}/apps/NativeDemoApp.app
+          IOS_DEVICE: iPhone 15
+          IOS_VERSION: "17.5"
+          WDA_DERIVED_DATA_PATH: ${{ github.workspace }}/wda-derived-data
+        run: npm run test:ios
+
+      - name: Collect simulator diagnostics
+        if: always()
+        run: |
+          mkdir -p artifacts/ios
+          xcrun simctl list devices > artifacts/ios/devices.txt
+          xcrun simctl spawn "$IOS_UDID" log show --last 10m --style compact > artifacts/ios/simulator.log || true
+
+      - name: Generate Allure report
+        if: always()
+        run: npm run allure:generate
+
+      - name: Upload Allure report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report-ios
+          path: allure-report/
+          retention-days: 14
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-ios
+          path: screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload raw Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-ios
+          path: allure-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload iOS diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-diagnostics
+          path: artifacts/ios/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  summary:
+    name: Test Summary
+    if: always()
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate jobs
+        run: |
+          echo "Android result: ${{ needs.android.result }}"
+          echo "iOS result: ${{ needs.ios.result }}"
+
+          if [ "${{ needs.android.result }}" = "failure" ] || [ "${{ needs.ios.result }}" = "failure" ]; then
+            exit 1
+          fi

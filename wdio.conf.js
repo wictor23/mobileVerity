@@ -104,11 +104,12 @@ const androidConfig = {
     "appium:autoGrantPermissions": true,
     "appium:noReset": false,
     "appium:newCommandTimeout": 120,
-    'appium:uiautomator2ServerInstallTimeout': 90000,
-    "appium:uiautomator2ServerLaunchTimeout": 90000,
+    'appium:uiautomator2ServerInstallTimeout': 120000,
+    "appium:uiautomator2ServerLaunchTimeout": 120000,
     'appium:disableWindowAnimation': true,
-    'appium:skipDeviceInitialization': true,
-    'appium:skipServerInstallation': true
+    'appium:skipDeviceInitialization': false,
+    'appium:skipServerInstallation': false,
+    'appium:adbExecTimeout': 120000,
   }]
 };
 

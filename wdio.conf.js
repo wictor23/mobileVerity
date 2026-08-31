@@ -99,7 +99,7 @@ const androidConfig = {
     platformName: "Android",
     "appium:automationName": "UiAutomator2",
     "appium:deviceName": process.env.ANDROID_DEVICE || "Pixel_6",
-    "appium:platformVersion": process.env.ANDROID_VERSION || "35",
+    //"appium:platformVersion": process.env.ANDROID_VERSION || "15",
     "appium:app": appPath,
     "appium:autoGrantPermissions": true,
     "appium:noReset": false,

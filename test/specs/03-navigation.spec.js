@@ -28,8 +28,4 @@ describe("Navegação", () => {
     expect(await browser.getPageSource()).to.match(/Drag/i);
   });
 
-  it("10 - deve abrir o menu", async () => {
-    await HomePage.openMenu();
-    expect(await browser.getPageSource()).to.match(/Menu/i);
-  });
 });

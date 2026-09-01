@@ -123,7 +123,8 @@ const iosConfig = {
     "appium:app": appPath,
     "appium:autoAcceptAlerts": true,
     "appium:noReset": true,
-    "appium:newCommandTimeout": 120
+    "appium:newCommandTimeout": 12000,
+    "appium:simulatorStartupTimeout": 300000,
   }]
 };
 

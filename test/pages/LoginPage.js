@@ -12,7 +12,7 @@ class LoginPage extends BasePage {
   }
 
  async confirmCadastro() {
-    await this.click(s.androidAlertConfirm);
+    await this.click(s.alertConfirm());
   }
 
   async login(email, password) {

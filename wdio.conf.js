@@ -102,7 +102,7 @@ const androidConfig = {
     //"appium:platformVersion": process.env.ANDROID_VERSION || "15",
     "appium:app": appPath,
     "appium:autoGrantPermissions": true,
-    "appium:noReset": false,
+    "appium:noReset": true,
     "appium:newCommandTimeout": 120,
     'appium:uiautomator2ServerInstallTimeout': 120000,
     "appium:uiautomator2ServerLaunchTimeout": 120000,
